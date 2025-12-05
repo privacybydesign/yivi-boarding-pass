@@ -1,10 +1,15 @@
 module boarding-pass
 
-go 1.23
+go 1.23.0
 
 toolchain go1.24.7
 
 require github.com/gorilla/mux v1.8.1
+
+require (
+	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/gomega v1.38.2 // indirect
+)
 
 require (
 	github.com/alexandrevicenzi/go-sse v1.6.0 // indirect
@@ -23,7 +28,6 @@ require (
 	github.com/go-co-op/gocron v1.28.3 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-sql-driver/mysql v1.7.1 // indirect
-	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
@@ -48,11 +52,11 @@ require (
 	github.com/multiformats/go-multihash v0.0.11 // indirect
 	github.com/nightlyone/lockfile v1.0.0 // indirect
 	github.com/privacybydesign/gabi v0.0.0-20221212095008-68a086907750 // indirect
-	github.com/privacybydesign/irmago v0.18.1 // indirect
-	github.com/redis/go-redis/v9 v9.14.0 // indirect
+	github.com/privacybydesign/irmago v0.18.1
+	github.com/redis/go-redis/v9 v9.14.0
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sietseringers/go-sse v0.0.0-20200801161811-e2cf2c63ca50 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
+	github.com/sirupsen/logrus v1.9.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/templexxx/cpu v0.0.9 // indirect
 	github.com/templexxx/xorsimd v0.4.1 // indirect
@@ -62,10 +66,10 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	gorm.io/driver/mysql v1.5.2 // indirect
 	gorm.io/driver/postgres v1.5.3 // indirect
 	gorm.io/driver/sqlserver v1.5.2 // indirect
