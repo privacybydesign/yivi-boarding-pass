@@ -141,13 +141,13 @@ func handleNextSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	disclosedClaims, ok := claims["disclosed"].([]interface{})
+	disclosedClaims, ok := claims["disclosed"].([]any)
 	if !ok || len(disclosedClaims) == 0 {
 		respondWithErr(w, http.StatusBadRequest, "invalid disclosed claims", "disclosed is missing or not an array", fmt.Errorf("invalid disclosed claims"))
 		return
 	}
 
-	group, ok := disclosedClaims[0].([]interface{})
+	group, ok := disclosedClaims[0].([]any)
 	if !ok || len(group) == 0 {
 		respondWithErr(w, http.StatusBadRequest, "invalid disclosed claims", "disclosed group is missing or not an array", fmt.Errorf("invalid disclosed group"))
 		return
@@ -156,7 +156,7 @@ func handleNextSession(w http.ResponseWriter, r *http.Request) {
 	// Collect all raw values from the disclosed attributes
 	values := make([]string, 0, len(group))
 	for _, item := range group {
-		m, ok := item.(map[string]interface{})
+		m, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
