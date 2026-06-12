@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go-fix:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Run go fix
+        run: go fix ./...
+
+      - name: Verify go fix made no changes
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::'go fix ./...' produced changes. Run it in backend/ and commit the result."
+            exit 1
+          fi
