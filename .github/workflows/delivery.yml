@@ -1,87 +1,91 @@
 name: Delivery
 
 on:
+  # Every push to main publishes/refreshes the `edge` image.
   push:
     branches: [main]
+  # Publishing a GitHub Release (i.e. entering a version number and tagging it)
+  # publishes the matching semver-tagged image and updates `latest`.
   release:
-    # Note: a current limitation is that when a release is edited after publication, then the Docker tags are not automatically updated.
     types: [published]
-  schedule:
-    # Run every monday on 9:00 in the morning (UTC).
-    - cron: "0 9 * * 0"
+  # Manual run: pick any branch (e.g. a PR branch) from the "Run workflow"
+  # dropdown to build and publish it as the `edge` image for testing.
   workflow_dispatch:
+  # Weekly rebuild of `edge` so base-image security patches are picked up.
+  schedule:
+    - cron: "0 9 * * 0" # Mondays 09:00 UTC
 
 permissions:
-  contents: write
+  contents: read
   packages: write
   security-events: write
 
+concurrency:
+  group: delivery-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   publish-docker-image:
+    name: Build, scan and publish image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Check whether this event is the HEAD of main
-        continue-on-error: true
-        id: is-head-main
-        run: git rev-parse HEAD | grep -x ${{ github.sha }}
-        shell: bash
-
-      - name: Docker meta
+      - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{major}}.{{minor}}.{{patch}}
-            type=edge,enable=${{ steps.is-head-main.outcome == 'success' }}
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
+            # main / dispatch / schedule -> edge; releases use semver instead.
+            type=raw,value=edge,enable=${{ github.event_name != 'release' }}
+            # release vX.Y.Z -> X.Y.Z and X.Y (plus `latest`, added automatically).
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build container and export to local Docker
-        uses: docker/build-push-action@v5
+      - name: Build image (load locally for scanning)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: .Dockerfile
           load: true
-          tags: local/boardingpass:scan
+          tags: local/boarding-pass:scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan Image
-        uses: anchore/scan-action@v3
+      - name: Scan image for vulnerabilities
         id: scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: local/boardingpass:scan
+          image: local/boarding-pass:scan
           only-fixed: true
           fail-build: true
           severity-cutoff: critical
           output-format: sarif
 
-      - name: Upload Anchore scan SARIF report
-        uses: github/codeql-action/upload-sarif@v3
-        if: ${{ !cancelled() }}
+      - name: Upload scan results to code scanning
+        if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
 
       - name: Push image to GitHub Container Registry
-        uses: docker/build-push-action@v5
-        if:
-          ${{ github.event_name == 'release' || github.event_name == 'push' ||
-          github.event_name == 'workflow_dispatch' }}
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
+          context: .
           file: .Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
