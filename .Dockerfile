@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG NODE_VERSION=22
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.26
 
 # ---------- Frontend build ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS frontend-build
