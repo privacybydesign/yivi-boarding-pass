@@ -24,13 +24,13 @@ declare module '@privacybydesign/yivi-frontend' {
     language?: string;
     session: {
       url: string;
-      start: any;
-      mapping?: any;
-      result: any;
+      start: unknown;
+      mapping?: unknown;
+      result: unknown;
     };
   }
   interface WebInstance {
-    start: () => Promise<any>;
+    start: () => Promise<unknown>;
     abort?: () => void;
   }
   export function newWeb(opts: WebOptions): WebInstance;
