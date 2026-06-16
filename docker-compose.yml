@@ -5,7 +5,7 @@ services:
       dockerfile: .Dockerfile
       args:
         NODE_VERSION: 22
-        GO_VERSION: 1.23
+        GO_VERSION: 1.26
     environment:
       VITE_API_ENDPOINT: http://localhost:8080/api
     image: boarding-pass:local
