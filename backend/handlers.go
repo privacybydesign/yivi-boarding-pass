@@ -10,7 +10,7 @@ import (
 	"os"
 
 	"github.com/golang-jwt/jwt/v4"
-	irma "github.com/privacybydesign/irmago"
+	irma "github.com/privacybydesign/irmago/irma"
 )
 
 func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	irma "github.com/privacybydesign/irmago"
+	irma "github.com/privacybydesign/irmago/irma"
 )
 
 type SessionPackage struct {
