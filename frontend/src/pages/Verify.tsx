@@ -30,13 +30,13 @@ export default function Verify() {
         let cancelled = false;
         let web: any;
 
-        setSessionDone(false);
-        setError("");
-        setTicket(null);
-
         import("@privacybydesign/yivi-frontend")
             .then((yivi: any) => {
                 if (cancelled) return;
+
+                setSessionDone(false);
+                setError("");
+                setTicket(null);
 
                 web = yivi.newWeb({
                     debugging: true,
