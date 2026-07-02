@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	irma "github.com/privacybydesign/irmago/irma"
 )
+
+// httpClient is used for all outbound requests to the IRMA server. It has an
+// explicit timeout so a slow or unresponsive IRMA server cannot hang request
+// handlers indefinitely (http.DefaultClient has no timeout).
+var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 type SessionPackage struct {
 	Token      string          `json:"token"`
@@ -66,7 +72,7 @@ func getDisclosureResp(state *ServerState, token string) (response *http.Respons
 		return nil, err
 	}
 	discReq.Header.Set("Accept", "application/json")
-	discResp, err := http.DefaultClient.Do(discReq)
+	discResp, err := httpClient.Do(discReq)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +87,7 @@ func sendDisclosureRequest(irmaSessionURL string, signedDiscReq string) (*http.R
 	httpReq.Header.Set("Content-Type", "text/plain")
 	httpReq.Header.Set("Accept", "application/json")
 
-	httpResp, err := http.DefaultClient.Do(httpReq)
+	httpResp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}

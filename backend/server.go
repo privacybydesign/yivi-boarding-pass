@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -68,11 +69,26 @@ func (s *Server) Stop() error {
 }
 
 func (h SpaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := filepath.Join(h.staticPath, r.URL.Path)
-	fi, err := os.Stat(path)
-	if os.IsNotExist(err) || fi.IsDir() {
+	absStatic, err := filepath.Abs(h.staticPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Treat the request path as rooted before cleaning so that any ".." segments
+	// are collapsed away and cannot escape the static directory.
+	reqPath := filepath.Join(absStatic, filepath.Clean("/"+r.URL.Path))
+
+	// Defense in depth: verify the resolved path stays under the static path.
+	if reqPath != absStatic && !strings.HasPrefix(reqPath, absStatic+string(os.PathSeparator)) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	fi, err := os.Stat(reqPath)
+	if os.IsNotExist(err) || (err == nil && fi.IsDir()) {
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
-		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
+		http.ServeFile(w, r, filepath.Join(absStatic, h.indexPath))
 		return
 	}
 
@@ -81,7 +97,7 @@ func (h SpaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
+	http.FileServer(http.Dir(absStatic)).ServeHTTP(w, r)
 }
 
 func registerSessionRoutes(router *mux.Router, state *ServerState) {
@@ -94,6 +110,6 @@ func registerSessionRoutes(router *mux.Router, state *ServerState) {
 	}).Methods(http.MethodGet)
 
 	router.HandleFunc("/api/nextsession", func(w http.ResponseWriter, r *http.Request) {
-		handleNextSession(w, r)
+		handleNextSession(w, r, state)
 	}).Methods(http.MethodPost)
 }
