@@ -48,7 +48,10 @@ type CredentialConfig struct {
 func main() {
 
 	configPath := flag.String("config", "", "Path for the config.json to use")
+	debug := flag.Bool("debug", false, "Enable debug logging (emits raw error values; keep off in production)")
 	flag.Parse()
+
+	log.SetDebug(*debug)
 
 	if *configPath == "" {
 		log.Error.Fatal("please provide a config path using the --config flag")
