@@ -82,6 +82,7 @@ func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to decode disclosure response", err)
 		return
 	}
+	log.Debug.Printf("sp.SessionPtr: %s", sp.SessionPtr)
 	sessionID, err := extractSessionIDFromPtr(sp.SessionPtr)
 	if err != nil {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to extract sessionID from sessionPtr", err)
@@ -113,7 +114,8 @@ func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(StartResponse{SessionPtr: sp.SessionPtr, SessionID: sessionID, Token: resultToken}); err != nil {
-		log.Error.Printf("failed to write response: %v", err)
+		log.Error.Printf("failed to write response")
+		log.Debug.Printf("failed to write response: %v", err)
 	}
 }
 
@@ -163,7 +165,8 @@ func handleResult(w http.ResponseWriter, r *http.Request, state *ServerState) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Error.Printf("failed to write result response: %v", err)
+		log.Error.Printf("failed to write result response")
+		log.Debug.Printf("failed to write result response: %v", err)
 	}
 
 }
@@ -249,7 +252,8 @@ func handleNextSession(w http.ResponseWriter, r *http.Request, state *ServerStat
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write(bs); err != nil {
-		log.Error.Printf("failed to write chained issuance response: %v", err)
+		log.Error.Printf("failed to write chained issuance response")
+		log.Debug.Printf("failed to write chained issuance response: %v", err)
 	}
 }
 
