@@ -49,12 +49,11 @@ export default function Verify() {
                             method: "GET",
                         },
                         result: {
-                            // Our backend expects a sessionID derived from sessionPtr.u
-                            url: (o: any, { sessionPtr }: any) => {
-                                if (!sessionPtr || !sessionPtr.u) return `${o.url}/result?sessionID=`;
-                                const sessionID = String(sessionPtr.u).split("/").pop();
-                                return `${o.url}/result?sessionID=${sessionID}`;
-                            },
+                            // The backend returns an unpredictable lookup token from /start
+                            // (mapped by yivi-frontend to sessionToken). It must be presented
+                            // to /result, which is bound to it rather than to the sessionID.
+                            url: (o: any, { sessionToken }: any) =>
+                                `${o.url}/result?token=${encodeURIComponent(sessionToken ?? "")}`,
                             method: "GET",
                         },
                     },

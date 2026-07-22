@@ -2,16 +2,49 @@ package main
 
 import (
 	log "boarding-pass/logging"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
 	irma "github.com/privacybydesign/irmago/irma"
 )
+
+// sessionIDPattern restricts session identifiers to a safe character set so that
+// values derived from external input cannot be used for path traversal or
+// injection into downstream URLs.
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// resultTokenPattern matches the base64url tokens produced by generateResultToken.
+var resultTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
+
+// validateSessionID returns an error when the sessionID is empty or contains
+// unexpected characters.
+func validateSessionID(sessionID string) error {
+	if !sessionIDPattern.MatchString(sessionID) {
+		return fmt.Errorf("session ID has an invalid format")
+	}
+	return nil
+}
+
+// generateResultToken returns an unpredictable, URL-safe lookup token that binds
+// a caller to the IRMA session they started. It is used as the storage key so
+// that knowing (or guessing) the IRMA session ID is not enough to read a result.
+func generateResultToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
 
 func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {
 
@@ -49,14 +82,26 @@ func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to decode disclosure response", err)
 		return
 	}
-	println("sp.SessionPtr", sp.SessionPtr)
 	sessionID, err := extractSessionIDFromPtr(sp.SessionPtr)
 	if err != nil {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to extract sessionID from sessionPtr", err)
 		return
 	}
+	if err := validateSessionID(sessionID); err != nil {
+		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "extracted sessionID is invalid", err)
+		return
+	}
 
-	err = state.tokenStorage.StoreToken(sessionID, sp.Token)
+	// Issue an unpredictable lookup token and store the IRMA requestor token
+	// keyed by it. The result endpoint requires this token, so a caller must
+	// have started the session to read its result.
+	resultToken, err := generateResultToken()
+	if err != nil {
+		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to generate result token", err)
+		return
+	}
+
+	err = state.tokenStorage.StoreToken(resultToken, sp.Token)
 	if err != nil {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to store token", err)
 		return
@@ -64,24 +109,31 @@ func handleStart(w http.ResponseWriter, r *http.Request, state *ServerState) {
 	type StartResponse struct {
 		SessionPtr json.RawMessage `json:"sessionPtr"`
 		SessionID  string          `json:"sessionId"`
+		Token      string          `json:"token"`
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(StartResponse{SessionPtr: sp.SessionPtr, SessionID: sessionID}); err != nil {
+	if err := json.NewEncoder(w).Encode(StartResponse{SessionPtr: sp.SessionPtr, SessionID: sessionID, Token: resultToken}); err != nil {
 		log.Error.Printf("failed to write response: %v", err)
 	}
 }
 
 func handleResult(w http.ResponseWriter, r *http.Request, state *ServerState) {
-	sessionID := r.URL.Query().Get("sessionID")
+	// The result is bound to the unpredictable lookup token issued at /api/start,
+	// not to the (guessable) IRMA session ID.
+	resultToken := r.URL.Query().Get("token")
 
-	if sessionID == "" {
-		respondWithErr(w, http.StatusBadRequest, "missing sessionID", "sessionID query parameter is required", fmt.Errorf("missing sessionID"))
+	if resultToken == "" {
+		respondWithErr(w, http.StatusBadRequest, "missing token", "token query parameter is required", fmt.Errorf("missing token"))
+		return
+	}
+	if !resultTokenPattern.MatchString(resultToken) {
+		respondWithErr(w, http.StatusBadRequest, "invalid token", "token has an invalid format", fmt.Errorf("invalid token format"))
 		return
 	}
 
-	token, err := state.tokenStorage.RetrieveToken(sessionID)
+	token, err := state.tokenStorage.RetrieveToken(resultToken)
 	if err != nil {
-		respondWithErr(w, http.StatusBadRequest, "invalid sessionID", "failed to retrieve token", err)
+		respondWithErr(w, http.StatusBadRequest, "invalid token", "failed to retrieve token", err)
 		return
 	}
 
@@ -103,7 +155,7 @@ func handleResult(w http.ResponseWriter, r *http.Request, state *ServerState) {
 	response := ResultResponse{SessionResult: json.RawMessage(discBody)}
 
 	// remove token from storage after sending over the results
-	err = state.tokenStorage.RemoveToken(sessionID)
+	err = state.tokenStorage.RemoveToken(resultToken)
 	if err != nil {
 		respondWithErr(w, http.StatusInternalServerError, ErrorInternal, "failed to remove token", err)
 		return
@@ -116,7 +168,7 @@ func handleResult(w http.ResponseWriter, r *http.Request, state *ServerState) {
 
 }
 
-func handleNextSession(w http.ResponseWriter, r *http.Request) {
+func handleNextSession(w http.ResponseWriter, r *http.Request, state *ServerState) {
 	if r.Method != http.MethodPost {
 		respondWithErr(w, http.StatusBadRequest, "invalid request", "invalid request method", fmt.Errorf("invalid request method"))
 		return
@@ -127,17 +179,13 @@ func handleNextSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// decode jwt body response
-	Parser := jwt.Parser{SkipClaimsValidation: true}
-	parsedJWT, _, err := Parser.ParseUnverified(string(body), jwt.MapClaims{})
+	// Authenticate the callback before trusting any disclosed claims. The
+	// endpoint is reachable by anyone on the network, so an unauthenticated
+	// caller could otherwise forge disclosed attributes and have arbitrary
+	// values issued into a boarding pass.
+	claims, err := authenticateCallback(state, r, string(body))
 	if err != nil {
-		respondWithErr(w, http.StatusBadRequest, "invalid JWT", "failed to parse callback JWT", err)
-		return
-	}
-
-	claims, ok := parsedJWT.Claims.(jwt.MapClaims)
-	if !ok {
-		respondWithErr(w, http.StatusBadRequest, "invalid JWT claims", "failed to extract JWT claims", fmt.Errorf("invalid JWT claims"))
+		respondWithErr(w, http.StatusUnauthorized, "unauthorized", "failed to authenticate next-session callback", err)
 		return
 	}
 
@@ -165,8 +213,10 @@ func handleNextSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if len(values) == 0 {
-		respondWithErr(w, http.StatusBadRequest, "missing raw values", "no rawvalue found in disclosed attributes", fmt.Errorf("missing raw values"))
+	// The boarding pass needs both a first name and a last name, so require at
+	// least two disclosed raw values before indexing values[0] and values[1].
+	if len(values) < 2 {
+		respondWithErr(w, http.StatusBadRequest, "missing raw values", "expected at least two rawvalue entries in disclosed attributes", fmt.Errorf("insufficient raw values: got %d, want >= 2", len(values)))
 		return
 	}
 
@@ -208,6 +258,76 @@ type issuanceJSON struct {
 	CallbackURL string `json:"callbackURL,omitempty"`
 	CallbackUrl string `json:"callbackUrl,omitempty"`
 	*irma.IssuanceRequest
+}
+
+// authenticateCallback verifies that a /api/nextsession request genuinely
+// originates from the trusted IRMA server and returns the JWT claims once
+// authenticated. Two mechanisms are supported and can be combined:
+//
+//   - next_session_public_key_path: the callback JWT's RS256 signature is
+//     verified against the IRMA server's public key (preferred).
+//   - next_session_auth_token: a pre-shared bearer token is required in the
+//     Authorization header.
+//
+// The handler fails closed: if neither is configured the callback is rejected.
+func authenticateCallback(state *ServerState, r *http.Request, rawJWT string) (jwt.MapClaims, error) {
+	cfg := state.credentialConfig
+
+	// Pre-shared bearer token (checked first when configured).
+	if cfg.NextSessionAuthToken != "" {
+		const prefix = "Bearer "
+		auth := r.Header.Get("Authorization")
+		if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) ||
+			subtle.ConstantTimeCompare([]byte(auth[len(prefix):]), []byte(cfg.NextSessionAuthToken)) != 1 {
+			return nil, fmt.Errorf("invalid or missing bearer token")
+		}
+	}
+
+	// JWT signature verification against the IRMA server's public key.
+	if cfg.NextSessionPublicKeyPath != "" {
+		pub, err := readNextSessionPublicKey(cfg.NextSessionPublicKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load next-session public key: %w", err)
+		}
+		token, err := jwt.Parse(rawJWT, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return pub, nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify callback JWT signature: %w", err)
+		}
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok || !token.Valid {
+			return nil, fmt.Errorf("invalid callback JWT claims")
+		}
+		return claims, nil
+	}
+
+	// No signature key configured: only proceed if a bearer token was configured
+	// (and therefore validated above). Otherwise fail closed.
+	if cfg.NextSessionAuthToken == "" {
+		return nil, fmt.Errorf("no next-session authentication configured: set next_session_public_key_path or next_session_auth_token")
+	}
+	parser := jwt.Parser{SkipClaimsValidation: true}
+	parsedJWT, _, err := parser.ParseUnverified(rawJWT, jwt.MapClaims{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse callback JWT: %w", err)
+	}
+	claims, ok := parsedJWT.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid callback JWT claims")
+	}
+	return claims, nil
+}
+
+func readNextSessionPublicKey(path string) (*rsa.PublicKey, error) {
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return jwt.ParseRSAPublicKeyFromPEM(keyBytes)
 }
 
 func readPrivateKey(state *ServerState) (*rsa.PrivateKey, error) {

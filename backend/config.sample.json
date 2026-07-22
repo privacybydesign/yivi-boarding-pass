@@ -9,7 +9,9 @@
     "private_key_path": "../local-secrets/priv.pem",
     "requestor_id": "boarding-pass",
     "scheme": "pbdf-staging",
-    "next_session_url": "endpoint-that-irma-server-calls-to-get-issuance-request"
+    "next_session_url": "endpoint-that-irma-server-calls-to-get-issuance-request",
+    "next_session_public_key_path": "../local-secrets/irma-server-pub.pem",
+    "next_session_auth_token": ""
   },
     "storage_config": {
         "type": "inmemory",
