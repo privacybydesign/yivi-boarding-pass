@@ -43,6 +43,13 @@ type CredentialConfig struct {
 	RequestorId    string `json:"requestor_id"`
 	Scheme         string `json:"scheme"`
 	NextSessionURL string `json:"next_session_url"`
+	// NextSessionPublicKeyPath points to the IRMA server's public key (PEM). When
+	// set, the /api/nextsession callback JWT's signature is verified against it.
+	NextSessionPublicKeyPath string `json:"next_session_public_key_path"`
+	// NextSessionAuthToken is an optional pre-shared bearer token required on the
+	// /api/nextsession callback. At least one of NextSessionPublicKeyPath or
+	// NextSessionAuthToken must be configured, or the callback fails closed.
+	NextSessionAuthToken string `json:"next_session_auth_token"`
 }
 
 func main() {
