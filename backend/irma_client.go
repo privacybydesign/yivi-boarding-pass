@@ -21,8 +21,6 @@ type SessionPackage struct {
 }
 
 func makeChainedRequest(state ServerState) irma.ServiceProviderRequest {
-	irma.NewRequestorIdentifier("boarding-pass")
-
 	disclosureRequest := irma.NewDisclosureRequest()
 	disclosureRequest.Disclose = irma.AttributeConDisCon{
 		irma.AttributeDisCon{
