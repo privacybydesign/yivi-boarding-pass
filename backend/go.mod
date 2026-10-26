@@ -1,8 +1,6 @@
 module boarding-pass
 
-go 1.26.0
-
-toolchain go1.26.3
+go 1.26.10
 
 require github.com/gorilla/mux v1.8.1
 
@@ -87,7 +85,7 @@ require (
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 	gorm.io/driver/sqlserver v1.6.3 // indirect
